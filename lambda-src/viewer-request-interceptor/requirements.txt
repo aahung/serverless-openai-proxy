@@ -1,0 +1,3 @@
+requests~=2.32
+aws-lambda-powertools~=2.41
+boto3~=1.34
