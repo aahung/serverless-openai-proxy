@@ -1,8 +1,6 @@
 from functools import lru_cache
 import json
 import requests
-from botocore.config import Config
-from aws_lambda_powertools.utilities import parameters
 
 from interceptors.util_encrypt import decrypt_api_key
 from interceptors.util_http import (
@@ -13,9 +11,7 @@ from interceptors.util_http import (
     http_with_cors,
     set_header_value,
 )
-
-config = Config(region_name="us-east-1")
-ssm_provider = parameters.SSMProvider(config=config)
+from interceptors.util_ssm import ssm_provider
 
 ALLOWED_ORG_IDS_CUSTOM_HEADER = "x-allowlisted-organizaion-ids"
 ENC_KEY_CUSTOM_HEADER = "x-api-key-encryption-key-name"

@@ -26,6 +26,7 @@ tofu apply
 
 | Name | Source | Version |
 |------|--------|---------|
+| <a name="module_encrypt_api_key_lambda_function"></a> [encrypt\_api\_key\_lambda\_function](#module\_encrypt\_api\_key\_lambda\_function) | terraform-aws-modules/lambda/aws | n/a |
 | <a name="module_origin_request_interceptor_lambda_function"></a> [origin\_request\_interceptor\_lambda\_function](#module\_origin\_request\_interceptor\_lambda\_function) | terraform-aws-modules/lambda/aws | n/a |
 
 ## Resources
@@ -38,6 +39,7 @@ tofu apply
 | [random_id.id](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/id) | resource |
 | [aws_cloudfront_cache_policy.managed_caching_disabled](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/cloudfront_cache_policy) | data source |
 | [aws_cloudfront_origin_request_policy.managed_all_viewer_except_host_header](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/cloudfront_origin_request_policy) | data source |
+| [aws_iam_policy_document.access_api_key_encryption_key](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/iam_policy_document) | data source |
 
 ## Inputs
 

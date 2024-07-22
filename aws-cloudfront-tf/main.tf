@@ -21,24 +21,7 @@ resource "random_bytes" "api_key_encryption_key" {
 
 locals {
   module_id = coalesce(var.module_id, random_id.id.hex)
-}
-
-resource "aws_ssm_parameter" "api_key_encryption_key" {
-  name  = "${local.module_id}-api_key_encryption_key"
-  type  = "SecureString"
-  value = random_bytes.api_key_encryption_key.base64
-}
-
-module "origin_request_interceptor_lambda_function" {
-  source = "terraform-aws-modules/lambda/aws"
-
-  lambda_at_edge = true
-  function_name  = "origin-request-interceptor-${local.module_id}"
-  handler        = "interceptors.origin_request_handler.lambda_handler"
-  runtime        = "python3.12"
-
-  architectures = ["x86_64"]
-  source_path = [
+  lambda_source_path = [
     {
       path = "${path.module}/../lambda-src"
       commands = [
@@ -54,27 +37,56 @@ module "origin_request_interceptor_lambda_function" {
       ]
     }
   ]
-  policy_json        = <<-EOT
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "ssm:Get*"
-            ],
-            "Resource": ["${aws_ssm_parameter.api_key_encryption_key.arn}"]
-        }
-      ]
-    }
-  EOT
+}
+
+resource "aws_ssm_parameter" "api_key_encryption_key" {
+  name  = "${local.module_id}-api_key_encryption_key"
+  type  = "SecureString"
+  value = random_bytes.api_key_encryption_key.base64
+}
+
+module "origin_request_interceptor_lambda_function" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  description    = "Lambda@Edge for validating API key for OpenAI proxy"
+  lambda_at_edge = true
+  function_name  = "origin-request-interceptor-${local.module_id}"
+  handler        = "interceptors.origin_request_handler.lambda_handler"
+  runtime        = "python3.12"
+
+  architectures      = ["x86_64"]
+  source_path        = local.lambda_source_path
+  hash_extra         = "origin-request-interceptor"
+  policy_json        = data.aws_iam_policy_document.access_api_key_encryption_key.json
   attach_policy_json = true
+}
+
+module "encrypt_api_key_lambda_function" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  description   = "Lambda function to generate encrypted API key for OpenAI proxy"
+  function_name = "encrypt-api-key-${local.module_id}"
+  handler       = "interceptors.encrypt_api_key_handler.lambda_handler"
+  runtime       = "python3.12"
+
+  architectures      = ["x86_64"]
+  source_path        = local.lambda_source_path
+  hash_extra         = "encrypt-api-key"
+  policy_json        = data.aws_iam_policy_document.access_api_key_encryption_key.json
+  attach_policy_json = true
+
+  environment_variables = {
+    API_KEY_ENCRYPTION_KEY_NAME = aws_ssm_parameter.api_key_encryption_key.name
+  }
 }
 
 resource "aws_cloudfront_distribution" "proxy_distribution" {
   origin {
     domain_name = "api.openai.com"
     origin_id   = "openai"
+
+    # lambda@edge doesn't support environment variables,
+    # we need to use custom headers to pass the values below
     custom_header {
       name  = "x-allowlisted-organizaion-ids"
       value = jsonencode(var.allowlisted_organizaion_ids)
