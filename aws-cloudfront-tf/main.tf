@@ -15,38 +15,57 @@ resource "random_id" "id" {
   byte_length = 4
 }
 
+resource "random_bytes" "api_key_encryption_key" {
+  length = 32
+}
+
 locals {
-  module_id                                       = coalesce(var.module_id, random_id.id.hex)
-  viewer_request_interceptor_lambda_function_name = "viewer-request-interceptor-${local.module_id}"
+  module_id = coalesce(var.module_id, random_id.id.hex)
 }
 
-resource "aws_ssm_parameter" "allowlisted_organizaion_ids" {
-  name  = "us-east-1.${local.viewer_request_interceptor_lambda_function_name}-allowlisted_organizaion_ids"
-  type  = "String"
-  value = jsonencode(var.allowlisted_organizaion_ids)
+resource "aws_ssm_parameter" "api_key_encryption_key" {
+  name  = "${local.module_id}-api_key_encryption_key"
+  type  = "SecureString"
+  value = random_bytes.api_key_encryption_key.base64
 }
 
-module "viewer_request_interceptor_lambda_function" {
+module "origin_request_interceptor_lambda_function" {
   source = "terraform-aws-modules/lambda/aws"
 
   lambda_at_edge = true
-  function_name  = local.viewer_request_interceptor_lambda_function_name
-  handler        = "index.lambda_handler"
+  function_name  = "origin-request-interceptor-${local.module_id}"
+  handler        = "interceptors.origin_request_handler.lambda_handler"
   runtime        = "python3.12"
 
-  source_path        = "../lambda-src/viewer-request-interceptor"
+  architectures = ["x86_64"]
+  source_path = [
+    {
+      path = "${path.module}/../lambda-src"
+      commands = [
+        ":zip",
+        "cd `mktemp -d`",
+        # https://stackoverflow.com/a/74495308
+        "pip3.12 install --platform manylinux2014_x86_64 --implementation cp --only-binary=:all: --target=. -r ${abspath(path.module)}/../lambda-src/requirements.txt",
+        ":zip . .",
+      ]
+      patterns = [
+        "!\\.venv/.*",
+        "!.*/__pycache__/.*",
+      ]
+    }
+  ]
   policy_json        = <<-EOT
     {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "ssm:Get*"
-                ],
-                "Resource": ["${aws_ssm_parameter.allowlisted_organizaion_ids.arn}"]
-            }
-        ]
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:Get*"
+            ],
+            "Resource": ["${aws_ssm_parameter.api_key_encryption_key.arn}"]
+        }
+      ]
     }
   EOT
   attach_policy_json = true
@@ -56,6 +75,18 @@ resource "aws_cloudfront_distribution" "proxy_distribution" {
   origin {
     domain_name = "api.openai.com"
     origin_id   = "openai"
+    custom_header {
+      name  = "x-allowlisted-organizaion-ids"
+      value = jsonencode(var.allowlisted_organizaion_ids)
+    }
+    custom_header {
+      name  = "x-api-key-encryption-key-name"
+      value = aws_ssm_parameter.api_key_encryption_key.name
+    }
+    custom_header {
+      name  = "x-use-api-key-encryption"
+      value = tostring(var.enable_api_key_encryption)
+    }
 
     custom_origin_config {
       http_port              = 80
@@ -89,8 +120,8 @@ resource "aws_cloudfront_distribution" "proxy_distribution" {
     cache_policy_id          = data.aws_cloudfront_cache_policy.managed_caching_disabled.id
 
     lambda_function_association {
-      event_type = "viewer-request"
-      lambda_arn = module.viewer_request_interceptor_lambda_function.lambda_function_qualified_arn
+      event_type = "origin-request"
+      lambda_arn = module.origin_request_interceptor_lambda_function.lambda_function_qualified_arn
     }
   }
 
