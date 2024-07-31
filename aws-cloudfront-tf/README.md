@@ -1,11 +1,18 @@
 # Serverless OpenAI Proxy with AWS CloudFront and terraform
 
+## Pre-requisite
+
+- [Configure AWS credential](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html)
+- [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli) or [OpenTofu](https://opentofu.org/docs/intro/install/)
+- Python 3.12 ([and `pip`](https://pip.pypa.io/en/stable/installation/))
+
+## Quick start
+
 Commands:
 
 ```sh
-tofu init
-tofu plan
-tofu apply
+tofu init  # or `terraform init`
+tofu apply  # or `terraform apply`
 ```
 
 <!-- BEGIN_TF_DOCS -->
